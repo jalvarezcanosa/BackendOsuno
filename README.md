@@ -1,6 +1,4 @@
-Aquí tienes el archivo completo. Solo tienes que copiar el bloque de código y pegarlo en tu archivo `README.md`.
 
-````markdown
 # 🎴 Osuno API Documentation
 
 Documentación oficial del backend para el proyecto **Osuno**. Esta API da servicio a la aplicación móvil (Android) y al cliente de juego (Godot).
