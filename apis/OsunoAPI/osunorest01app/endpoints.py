@@ -35,3 +35,26 @@ def create_user(request):
     user = User(username=username, encrypted_password=hashed_password)
     user.save()
     return JsonResponse({"success": True, "username": username}, status=201)
+
+@csrf_exempt
+def login(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+    try:
+        body = json.loads(request.body)
+        username = body['username']
+        password = body['password']
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({"error": "Missing parameter"}, status=400)
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+    if not bcrypt.checkpw(
+        password.encode('utf8'),
+        user.encrypted_password.encode('utf8')):
+        return JsonResponse({"error": "Password not valid"}, status=401)
+    token = secrets.token_hex(16)
+    UserSession.objects.create(user=user, token=token)
+    return JsonResponse(
+        {"user_session_token": token}, status=201)
