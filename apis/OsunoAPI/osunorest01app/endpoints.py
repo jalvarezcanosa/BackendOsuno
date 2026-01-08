@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from apis.OsunoAPI.osunorest01app.models import UserSession, User
 
 
-def users(request):
+'''def users(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=400)
 
@@ -36,7 +36,7 @@ def users(request):
         session.save()
         return JsonResponse({"Created"}, status=201)
     else:
-        return JsonResponse({"error": "Password not valid"}, status=401)
+        return JsonResponse({"error": "Password not valid"}, status=401)'''
 
 def __get_request_user(request):
     header_token = request.headers.get('Api-Session-Token', None)
