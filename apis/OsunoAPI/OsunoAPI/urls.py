@@ -17,6 +17,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 
+from apis.OsunoAPI.osunorest01app import endpoints
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('users', endpoints.users),
 ]
