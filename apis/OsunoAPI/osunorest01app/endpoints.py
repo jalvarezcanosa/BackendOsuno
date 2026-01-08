@@ -4,7 +4,7 @@ import secrets
 import bcrypt
 from django.http import JsonResponse
 
-from apis.OsunoAPI.osunorest01app.models import UserSession
+from apis.OsunoAPI.osunorest01app.models import UserSession, User
 
 
 def users(request):
@@ -22,8 +22,8 @@ def users(request):
     except KeyError:
         return JsonResponse({"error": "Missing parameter"}, status=400)
 
-    ##if User.objects.filter(username=username_json).exists():
-        return JsonResponse({"error": "User already exists"}, status=409)##
+    if User.objects.filter(username=username_json).exists():
+        return JsonResponse({"error": "User already exists"}, status=409)
 
     try:
         db_user = User.objects.get(username=username_json)
