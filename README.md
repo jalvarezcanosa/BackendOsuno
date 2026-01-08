@@ -170,6 +170,7 @@ Consulta el estado de la sala mientras esperas al rival.
 ### 7\. Polling del Estado del Juego
 
 Obtiene la "foto" actual de la partida. Debe llamarse al inicio y cada 3 segundos si `isYourTurn` es `false`.
+**Comprobar si gameIsFinished con un if (si el mazo está vacío gana el que menos cartas tenga)
 
   * **Método:** `GET`
   * **Endpoint:** `/game/{roomCode}`
@@ -183,7 +184,6 @@ Obtiene la "foto" actual de la partida. Debe llamarse al inicio y cada 3 segundo
       "yourHand": ["blue4", "red3", "yellow1", "green10", "green9"],
       "tableCard": "red3",    // "none" si acaba de empezar
       "isYourTurn": true,     // true = habilita UI para jugar/robar
-      "gameFinished": "no"    // "no" | "youWon" | "youLost"
     }
     ```
   * `401 Unauthorized`: Token inválido.
