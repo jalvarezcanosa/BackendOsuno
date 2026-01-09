@@ -10,7 +10,7 @@ def health_check(request):
     return JsonResponse({"is_alive": True}, status=200)
 
 def __get_request_user(request):
-    header_token = request.headers.get('Api-Session-Token', None)
+    header_token = request.headers.get('Session', None)
     if header_token is None:
         return None
     try:
@@ -57,4 +57,26 @@ def login(request):
     token = secrets.token_hex(16)
     UserSession.objects.create(user=user, token=token)
     return JsonResponse(
-        {"user_session_token": token}, status=201)
+        {"sessionToken": token}, status=201)
+
+@csrf_exempt
+def get_me(request):
+    if request.method != 'GET':
+        return JsonResponse(
+            {'error': 'HTTP method not supported'},
+            status=405
+        )
+    user = __get_request_user(request)
+    if user is None:
+        return JsonResponse(
+            {'error': 'Unauthorized'},
+            status=401
+        )
+    return JsonResponse(
+        {
+            "username": user.username,
+            "gamesWon": user.games_won,
+            "gamesPlayed": user.games_played
+        },
+        status=200
+    )
