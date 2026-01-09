@@ -16,9 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-
-
+from osunorest01app import endpoints
 urlpatterns = [
     path('admin/', admin.site.urls),
-    ##path('users', endpoints.users),
+    path('health/', endpoints.health_check),
+    path('users/', endpoints.create_user),
+    path('sessions/', endpoints.login),
+    path('users/me/', endpoints.get_me),
 ]
