@@ -10,13 +10,11 @@ class UserSession(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.CharField(unique=True, max_length=35)
 
-class Room(models.Model):
-    code = models.CharField(unique=True, max_length=10)
-
 class Game(models.Model):
+    code = models.CharField(unique=True, max_length=10)
     state = models.CharField(max_length=220) #room_not_started, ...
-    creator = models.ForeignKey(User, on_delete=models.CASCADE)
-    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="creator")
+    joined = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name="joined")
 
 class GameDeckCard(models.Model):
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
@@ -31,11 +29,3 @@ class GameCardInHand(models.Model):
     
     class Meta:
         unique_together = ('card_code', 'game')
-
-class RoomMembership(models.Model):
-    room = models.ForeignKey(Room, on_delete=models.CASCADE)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    joined_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        unique_together = ('room', 'user')
