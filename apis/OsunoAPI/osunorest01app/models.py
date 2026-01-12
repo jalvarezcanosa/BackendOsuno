@@ -11,8 +11,8 @@ class UserSession(models.Model):
 class Game(models.Model):
     code = models.CharField(unique=True, max_length=10)
     state = models.CharField(max_length=220) #room_not_started, ...
-    creator = models.ForeignKey(User, on_delete=models.CASCADE)
-    joined = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None)
+    creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="creator")
+    joined = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name="joined")
 
 class GameDeckCard(models.Model):
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
