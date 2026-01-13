@@ -18,7 +18,7 @@ class Game(models.Model):
 
 class GameDeckCard(models.Model):
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
-    card_code = models.CharField
+    card_code = models.CharField(max_length=10)
     initial_position = models.IntegerField()
     is_creator_turn = models.BooleanField(default=True)
 
