@@ -4,6 +4,8 @@ from json import JSONDecodeError
 
 import bcrypt
 from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .models import User, UserSession
 from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt
 
@@ -14,24 +16,9 @@ def users(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=400)
 
-    try:
-        body_json = json.loads(request.body)
-    except json.decoder.JSONDecodeError:
-        return JsonResponse({"error": "Missing parameter"}, status=400)
-
-    try:
-        username_json =body_json['username']
-        password_json =body_json['password']
-    except KeyError:
-        return JsonResponse({"error": "Missing parameter"}, status=400)
-
-    if User.objects.filter(username=username_json).exists():
-        return JsonResponse({"error": "User already exists"}, status=409)
-
-    salted_and_hashed_pass = bcrypt.hashpw(password_json.encode('utf8'), bcrypt.gensalt()).decode('utf8')
-    user_object = User(username=username_json, encrypted_password=salted_and_hashed_pass)
-    user_object.save()
-    return JsonResponse({"is_created": True}, status=201)
+@csrf_exempt
+def health_check(request):
+    return JsonResponse({"is_alive": True}, status=200)
 
 def __get_request_user(request):
     header_token = request.headers.get('Api-Session-Token', None)
@@ -42,6 +29,23 @@ def __get_request_user(request):
         return db_session.user
     except UserSession.DoesNotExist:
         return None
+
+@csrf_exempt
+def create_user(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+    try:
+        body_json = json.loads(request.body)
+        username = body_json['username']
+        password = body_json['password']
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({"error": "Missing parameter"}, status=400)
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({"error": "User already exists"}, status=409)
+    hashed_password = bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt()).decode('utf8')
+    user = User(username=username, encrypted_password=hashed_password)
+    user.save()
+    return JsonResponse({"success": True, "username": username}, status=201)
 
 
 @csrf_exempt
