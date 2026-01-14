@@ -1,18 +1,16 @@
 from django.db import models
 
 class User(models.Model):
-    username = models.CharField(max_length=220)
+    username = models.CharField(max_length=30)
     encrypted_password = models.CharField(max_length=120)
-    games_won = models.IntegerField(default=0)
-    games_played = models.IntegerField(default=0)
 
 class UserSession(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    token = models.CharField(unique=True, max_length=35)
+    token = models.CharField(unique=True, max_length=32)
 
 class Game(models.Model):
     code = models.CharField(unique=True, max_length=10)
-    state = models.CharField(max_length=220) #room_not_started, ...
+    state = models.CharField(max_length=30) #room_not_started, creator_won, joined_won, in_progress?, draw?
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="creator")
     joined = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name="joined")
 
@@ -26,6 +24,6 @@ class GameCardInHand(models.Model):
     card_code = models.CharField(max_length=10)
     player = models.ForeignKey(User, on_delete=models.CASCADE)
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
-    
+
     class Meta:
         unique_together = ('card_code', 'game')

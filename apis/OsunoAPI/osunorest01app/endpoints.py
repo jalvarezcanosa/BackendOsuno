@@ -3,7 +3,7 @@ import secrets
 import bcrypt
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .models import User, UserSession
+from .models import User, UserSession, Game
 
 @csrf_exempt
 def health_check(request):
@@ -62,21 +62,27 @@ def login(request):
 @csrf_exempt
 def get_me(request):
     if request.method != 'GET':
-        return JsonResponse(
-            {'error': 'HTTP method not supported'},
-            status=405
-        )
+        return JsonResponse({'error': 'HTTP method not supported'},status=405)
+
     user = __get_request_user(request)
     if user is None:
-        return JsonResponse(
-            {'error': 'Unauthorized'},
-            status=401
-        )
-    return JsonResponse(
-        {
-            "username": user.username,
-            "gamesWon": user.games_won,
-            "gamesPlayed": user.games_played
-        },
-        status=200
-    )
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    creator_games = Game.objects.filter(creator=user)
+    joined_games = Game.objects.filter(joined=user)
+
+    games_won = 0
+    for g in creator_games:
+        if g.state == 'creator_won':
+            games_won += 1
+    for g in joined_games:
+        if g.state == 'joined_won':
+            games_won += 1
+
+    games_played = len(creator_games) + len(joined_games)
+
+    return JsonResponse({
+        "username": username,
+        "gamesWon": games_won,
+        "gamesPlayed": games_played
+    }, status=200)
