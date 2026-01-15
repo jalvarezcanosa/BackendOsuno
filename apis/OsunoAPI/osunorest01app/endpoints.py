@@ -3,14 +3,14 @@ import secrets
 import bcrypt
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .models import User, UserSession
+from .models import User, UserSession, Game
 
 @csrf_exempt
 def health_check(request):
     return JsonResponse({"is_alive": True}, status=200)
 
 def __get_request_user(request):
-    header_token = request.headers.get('Api-Session-Token', None)
+    header_token = request.headers.get('Session', None)
     if header_token is None:
         return None
     try:
@@ -35,3 +35,47 @@ def create_user(request):
     user = User(username=username, encrypted_password=hashed_password)
     user.save()
     return JsonResponse({"success": True, "username": username}, status=201)
+
+@csrf_exempt
+def login(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+    try:
+        body = json.loads(request.body)
+        username = body['username']
+        password = body['password']
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({"error": "Missing parameter"}, status=400)
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+    if not bcrypt.checkpw(
+        password.encode('utf8'),
+        user.encrypted_password.encode('utf8')):
+        return JsonResponse({"error": "Password not valid"}, status=401)
+    token = secrets.token_hex(16)
+    UserSession.objects.create(user=user, token=token)
+    return JsonResponse(
+        {"sessionToken": token}, status=201)
+
+@csrf_exempt
+def get_me(request):
+    if request.method != 'GET':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    user = __get_request_user(request)
+    if user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    games_won = Game.objects.filter(creator=user, state='creator_won').count()
+    games_won += Game.objects.filter(joined=user, state='joined_won').count()
+
+    games_played = Game.objects.filter(creator=user).count()
+    games_played += Game.objects.filter(joined=user).count()
+
+    return JsonResponse({
+        "username": user.username,
+        "gamesWon": games_won,
+        "gamesPlayed": games_played
+    }, status=200)
