@@ -62,27 +62,20 @@ def login(request):
 @csrf_exempt
 def get_me(request):
     if request.method != 'GET':
-        return JsonResponse({'error': 'HTTP method not supported'},status=405)
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
 
     user = __get_request_user(request)
     if user is None:
         return JsonResponse({'error': 'Unauthorized'}, status=401)
 
-    creator_games = Game.objects.filter(creator=user)
-    joined_games = Game.objects.filter(joined=user)
+    games_won = Game.objects.filter(creator=user, state='creator_won').count()
+    games_won += Game.objects.filter(joined=user, state='joined_won').count()
 
-    games_won = 0
-    for g in creator_games:
-        if g.state == 'creator_won':
-            games_won += 1
-    for g in joined_games:
-        if g.state == 'joined_won':
-            games_won += 1
-
-    games_played = len(creator_games) + len(joined_games)
+    games_played = Game.objects.filter(creator=user).count()
+    games_played += Game.objects.filter(joined=user).count()
 
     return JsonResponse({
-        "username": username,
+        "username": user.username,
         "gamesWon": games_won,
         "gamesPlayed": games_played
     }, status=200)
