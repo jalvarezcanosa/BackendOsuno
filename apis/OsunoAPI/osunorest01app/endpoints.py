@@ -9,7 +9,7 @@ from .models import User, UserSession
 from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt
 
-from osunorest01app.models import UserSession, User, Room, Game
+from osunorest01app.models import UserSession, User, Game
 
 @csrf_exempt
 def users(request):
@@ -38,6 +38,8 @@ def create_user(request):
         body_json = json.loads(request.body)
         username = body_json['username']
         password = body_json['password']
+
+
     except (json.JSONDecodeError, KeyError):
         return JsonResponse({"error": "Missing parameter"}, status=400)
     if User.objects.filter(username=username).exists():
@@ -64,22 +66,19 @@ def create_room(request):
     except UserSession.DoesNotExist:
         return JsonResponse({'error': 'User not found'}, status=404)
 
-    room_code = ""
     while True:
         room_code = get_random_string(length=3, allowed_chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ')
-        if not Room.objects.filter(code=room_code).exists():
+        if not Game.objects.filter(code=room_code).exists():
             break
 
     try:
-        new_room = Room.objects.create(code=room_code)
-
-        Game.objects.create(
+        new_game = Game.objects.create(
+            code = room_code,
             state="room_not_started",
             creator=current_user,
-            join=new_room
         )
 
-        return JsonResponse({"roomCode": new_room.code}, status=201)
+        return JsonResponse({"roomCode": new_game.code}, status=201)
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
