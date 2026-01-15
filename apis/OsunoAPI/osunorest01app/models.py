@@ -14,7 +14,9 @@ class Game(models.Model):
     code = models.CharField(unique=True, max_length=10)
     state = models.CharField(max_length=220)
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="creator")
+    table_card = models.CharField(max_length=10, null=True, default=None)
     joined = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name="joined")
+    winner = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name="winner")
 
 class GameDeckCard(models.Model):
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
