@@ -22,7 +22,9 @@ from django.urls import path
 from osunorest01app import endpoints
 
 urlpatterns = [
+    path('admin/', admin.site.urls),
     path('health/', endpoints.health_check),
-    path('users/create/', endpoints.create_user),
-    path('rooms/<str:room_code>/status/', endpoints.get_room_status),
+    path('user/', endpoints.create_user),
+    path('game/<str:room_code>/status/', endpoints.get_room_status),
+    path('game/<str:room_code>/tableCard/', endpoints.play_card),
 ]

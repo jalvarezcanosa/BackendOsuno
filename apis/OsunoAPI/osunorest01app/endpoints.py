@@ -206,4 +206,4 @@ def play_card(request, room_code):
         "gameState": game.state,
         "isGameOver": is_game_over,
         "winner": winner.username if is_game_over else None
-    }, status=201)
+    }, status=200)
