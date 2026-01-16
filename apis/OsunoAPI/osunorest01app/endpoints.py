@@ -1,14 +1,8 @@
 import json
-import secrets
-import bcrypt
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .models import User, UserSession, Game, GameCardInHand, GameDeckCard
-
-
-@csrf_exempt
-def health_check(request):
-    return JsonResponse({"is_alive": True}, status=200)
+from django.db.models import Min
+from .models import User, UserSession, Game, GameDeckCard, GameCardInHand
 
 
 def __get_request_user(request):
@@ -22,26 +16,257 @@ def __get_request_user(request):
         return None
 
 
+def __check_playable_cards(hand_cards, top_card_code, game):
+    """Verifica si hay cartas jugables en la mano"""
+    top_color = top_card_code[0] if len(top_card_code) > 0 else None
+    top_value = top_card_code[1:] if len(top_card_code) > 1 else None
+
+    for card in hand_cards:
+        card_color = card.card_code[0] if len(card.card_code) > 0 else None
+        card_value = card.card_code[1:] if len(card.card_code) > 1 else None
+
+        if card_color == 'W':  # Comodines
+            return True
+        if card_color == top_color or card_value == top_value:
+            return True
+
+    return False
+
+
+def __determine_winner(creator, joined, game):
+    """Determina el ganador basado en quien tiene menos cartas"""
+    creator_cards = GameCardInHand.objects.filter(game=game, player=creator).count()
+    joined_cards = GameCardInHand.objects.filter(game=game, player=joined).count()
+
+    if creator_cards < joined_cards:
+        return creator
+    elif joined_cards < creator_cards:
+        return joined
+    else:
+        return creator
+
+
+def __is_card_playable(card_code, top_card_code):
+    """Verifica si una carta específica puede jugarse"""
+    card_color = card_code[0] if len(card_code) > 0 else None
+    card_value = card_code[1:] if len(card_code) > 1 else None
+
+    top_color = top_card_code[0] if len(top_card_code) > 0 else None
+    top_value = top_card_code[1:] if len(top_card_code) > 1 else None
+
+    # Comodines siempre pueden jugarse
+    if card_color == 'W':
+        return True
+
+    # Mismo color o mismo valor
+    if card_color == top_color or card_value == top_value:
+        return True
+
+    return False
+
+
+# ================= ENDPOINTS =================
+
 @csrf_exempt
-def create_user(request):
+def draw_card(request, room_code):
+    """
+    POST /game/{room_code}/deck
+    Robar una carta del mazo
+    """
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    user = __get_request_user(request)
+    if user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
     try:
-        body_json = json.loads(request.body)
-        username = body_json['username']
-        password = body_json['password']
-    except (json.JSONDecodeError, KeyError):
-        return JsonResponse({"error": "Missing parameter"}, status=400)
-    if User.objects.filter(username=username).exists():
-        return JsonResponse({"error": "User already exists"}, status=409)
-    hashed_password = bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt()).decode('utf8')
-    user = User(username=username, encrypted_password=hashed_password)
-    user.save()
-    return JsonResponse({"success": True, "username": username}, status=201)
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Room not found'}, status=404)
+
+    if game.creator != user and game.joined != user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    game_state = json.loads(game.state) if game.state else {}
+    is_creator = (game.creator == user)
+
+    any_deck_card = GameDeckCard.objects.filter(game=game).first()
+    if any_deck_card is None:
+        return JsonResponse({'error': 'Game not initialized'}, status=400)
+
+    is_creator_turn = any_deck_card.is_creator_turn
+
+    if is_creator != is_creator_turn:
+        return JsonResponse({'error': 'Not your turn'}, status=403)
+
+    deck_cards = GameDeckCard.objects.filter(game=game).order_by('initial_position')
+    cards_in_hands = GameCardInHand.objects.filter(game=game).values_list('card_code', flat=True)
+    available_cards = deck_cards.exclude(card_code__in=cards_in_hands)
+
+    if not available_cards.exists():
+        return JsonResponse({'error': 'No hay cartas en el mazo'}, status=403)
+
+    card_to_draw = available_cards.first()
+
+    new_card = GameCardInHand(
+        card_code=card_to_draw.card_code,
+        player=user,
+        game=game
+    )
+    new_card.save()
+
+    remaining_cards = available_cards.exclude(card_code=card_to_draw.card_code)
+
+    if not remaining_cards.exists():
+        top_card_code = game_state.get('top_card', '')
+        current_player_cards = GameCardInHand.objects.filter(game=game, player=user)
+        has_playable = __check_playable_cards(current_player_cards, top_card_code, game)
+
+        if not has_playable:
+            rival = game.joined if is_creator else game.creator
+            rival_cards = GameCardInHand.objects.filter(game=game, player=rival)
+            rival_has_playable = __check_playable_cards(rival_cards, top_card_code, game)
+
+            if rival_has_playable:
+                GameDeckCard.objects.filter(game=game).update(
+                    is_creator_turn=not is_creator_turn
+                )
+            else:
+                winner = __determine_winner(game.creator, game.joined, game)
+                winner.games_won += 1
+                winner.games_played += 1
+                winner.save()
+
+                loser = game.joined if winner == game.creator else game.creator
+                loser.games_played += 1
+                loser.save()
+
+                game_state['status'] = 'finished'
+                game_state['winner'] = winner.username
+                game_state['reason'] = 'No quedan cartas jugables'
+                game.state = json.dumps(game_state)
+                game.save()
+
+                return JsonResponse({
+                    'message': 'Juego terminado',
+                    'winner': winner.username,
+                    'reason': 'No quedan cartas jugables'
+                }, status=200)
+
+    return JsonResponse({
+        'message': 'Carta robada exitosamente',
+        'cards_in_deck': remaining_cards.count() if remaining_cards.exists() else 0
+    }, status=200)
 
 
 @csrf_exempt
-def get_room_status(request, room_code):
+def play_card(request, room_code):
+    """
+    POST /game/{room_code}/card
+    Body: {"card_code": "R5", "color": "R"} (color opcional para comodines)
+    Jugar una carta
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    user = __get_request_user(request)
+    if user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    try:
+        body_json = json.loads(request.body)
+        card_code = body_json['card_code']
+        chosen_color = body_json.get('color', None)  # Para comodines
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({"error": "Missing parameter"}, status=400)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Room not found'}, status=404)
+
+    if game.creator != user and game.joined != user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    game_state = json.loads(game.state) if game.state else {}
+    is_creator = (game.creator == user)
+
+    any_deck_card = GameDeckCard.objects.filter(game=game).first()
+    if any_deck_card is None:
+        return JsonResponse({'error': 'Game not initialized'}, status=400)
+
+    is_creator_turn = any_deck_card.is_creator_turn
+
+    if is_creator != is_creator_turn:
+        return JsonResponse({'error': 'Not your turn'}, status=403)
+
+    # Verificar que el jugador tiene la carta
+    try:
+        card_in_hand = GameCardInHand.objects.get(
+            game=game,
+            player=user,
+            card_code=card_code
+        )
+    except GameCardInHand.DoesNotExist:
+        return JsonResponse({'error': 'Card not in hand'}, status=400)
+
+    # Verificar que la carta puede jugarse
+    top_card_code = game_state.get('top_card', '')
+    if not __is_card_playable(card_code, top_card_code):
+        return JsonResponse({'error': 'Card cannot be played'}, status=400)
+
+    # Jugar la carta (removerla de la mano)
+    card_in_hand.delete()
+
+    # Actualizar carta superior
+    if card_code[0] == 'W' and chosen_color:
+        game_state['top_card'] = chosen_color + card_code[1:]
+    else:
+        game_state['top_card'] = card_code
+
+    # Verificar si el jugador ganó (no tiene más cartas)
+    remaining_cards = GameCardInHand.objects.filter(game=game, player=user).count()
+    if remaining_cards == 0:
+        user.games_won += 1
+        user.games_played += 1
+        user.save()
+
+        rival = game.joined if is_creator else game.creator
+        rival.games_played += 1
+        rival.save()
+
+        game_state['status'] = 'finished'
+        game_state['winner'] = user.username
+        game_state['reason'] = 'No cards left'
+        game.state = json.dumps(game_state)
+        game.save()
+
+        return JsonResponse({
+            'message': 'You won!',
+            'winner': user.username
+        }, status=200)
+
+    # Cambiar turno
+    GameDeckCard.objects.filter(game=game).update(
+        is_creator_turn=not is_creator_turn
+    )
+
+    game.state = json.dumps(game_state)
+    game.save()
+
+    return JsonResponse({
+        'message': 'Card played successfully',
+        'top_card': game_state['top_card']
+    }, status=200)
+
+
+@csrf_exempt
+def get_hand(request, room_code):
+    """
+    GET /game/{room_code}/hand
+    Obtener las cartas en la mano del jugador
+    """
     if request.method != 'GET':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
 
@@ -54,156 +279,102 @@ def get_room_status(request, room_code):
     except Game.DoesNotExist:
         return JsonResponse({'error': 'Room not found'}, status=404)
 
-    # Verificar que el usuario pertenece a la sala
     if game.creator != user and game.joined != user:
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
-    # Determinar el estado de la sala
-    if game.joined is None:
-        status = "waiting"
-    else:
-        status = "gameStarted"
+    # Obtener cartas del jugador
+    hand_cards = GameCardInHand.objects.filter(game=game, player=user)
+    cards_list = [card.card_code for card in hand_cards]
 
-    return JsonResponse({"status": status}, status=200)
-
-#############################################################################
-def __can_play_card(card_to_play, table_card):
-    """
-    Verifica si una carta puede jugarse sobre la carta de la mesa.
-    Reglas: mismo color O mismo número
-    """
-    if table_card is None:
-        return True
-
-    # Extraer color y número de ambas cartas
-    # Asumiendo formato: "blue4", "red7", etc.
-    color_to_play = ''.join([c for c in card_to_play if c.isalpha()])
-    number_to_play = ''.join([c for c in card_to_play if c.isdigit()])
-
-    color_table = ''.join([c for c in table_card if c.isalpha()])
-    number_table = ''.join([c for c in table_card if c.isdigit()])
-
-    # Puede jugarse si coincide el color O el número
-    return color_to_play == color_table or number_to_play == number_table
-
-
-def __check_opponent_can_play(game, opponent):
-    """
-    Verifica si el oponente tiene alguna carta jugable
-    """
-    opponent_cards = GameCardInHand.objects.filter(game=game, player=opponent)
-
-    for card_in_hand in opponent_cards:
-        if __can_play_card(card_in_hand.card_code, game.table_card):
-            return True
-
-    return False
-
-
-def __check_game_over(game, current_player):
-    """
-    Verifica las condiciones de game over:
-    1. El jugador actual no tiene más cartas en mano (ganó)
-    2. No hay cartas en el mazo Y el rival no puede jugar (ganó el jugador actual)
-    """
-    # Verificar si el jugador actual se quedó sin cartas
-    current_player_cards = GameCardInHand.objects.filter(game=game, player=current_player).count()
-    if current_player_cards == 0:
-        return True, current_player
-
-    # Verificar si no hay cartas en el mazo
-    deck_cards = GameDeckCard.objects.filter(game=game).count()
-    if deck_cards == 0:
-        # Determinar quién es el oponente
-        opponent = game.joined if current_player == game.creator else game.creator
-
-        # Verificar si el oponente puede jugar
-        if not __check_opponent_can_play(game, opponent):
-            return True, current_player
-
-    return False, None
+    return JsonResponse({
+        'cards': cards_list,
+        'count': len(cards_list)
+    }, status=200)
 
 
 @csrf_exempt
-def play_card(request, room_code):
-    if request.method != 'POST':
+def get_game_state(request, room_code):
+    """
+    GET /game/{room_code}/state
+    Obtener el estado actual del juego (polling)
+    """
+    if request.method != 'GET':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
 
-    # Autenticación
     user = __get_request_user(request)
     if user is None:
         return JsonResponse({'error': 'Unauthorized'}, status=401)
 
-    # Parsear body
-    try:
-        body_json = json.loads(request.body)
-        card_to_play = body_json['cardToPlay']
-    except (json.JSONDecodeError, KeyError):
-        return JsonResponse({"error": "Missing parameter"}, status=400)
-
-    # Verificar que la sala existe
     try:
         game = Game.objects.get(code=room_code)
     except Game.DoesNotExist:
         return JsonResponse({'error': 'Room not found'}, status=404)
 
-    # Verificar que el usuario pertenece a la sala
     if game.creator != user and game.joined != user:
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
-    # Verificar que es el turno del jugador
-    is_creator_turn = game.state == "creator_turn"
-    is_users_turn = (is_creator_turn and user == game.creator) or (not is_creator_turn and user == game.joined)
+    game_state = json.loads(game.state) if game.state else {}
 
-    if not is_users_turn:
-        return JsonResponse({'error': 'Forbidden - Not your turn'}, status=403)
-
-    # Verificar que el jugador tiene esa carta en la mano
-    try:
-        card_in_hand = GameCardInHand.objects.get(game=game, player=user, card_code=card_to_play)
-    except GameCardInHand.DoesNotExist:
-        return JsonResponse({'error': 'Forbidden - Card not in your hand'}, status=403)
-
-    # Verificar que la carta puede jugarse
-    if not __can_play_card(card_to_play, game.table_card):
-        return JsonResponse({'error': 'Forbidden - Card cannot be played'}, status=403)
-
-    # JUGAR LA CARTA
-    # 1. Remover la carta de la mano del jugador
-    card_in_hand.delete()
-
-    # 2. Actualizar la carta en la mesa
-    game.table_card = card_to_play
-
-    # 3. Cambiar el turno
-    if is_creator_turn:
-        game.state = "joined_turn"
+    # Determinar de quién es el turno
+    any_deck_card = GameDeckCard.objects.filter(game=game).first()
+    if any_deck_card:
+        is_creator_turn = any_deck_card.is_creator_turn
+        is_my_turn = (game.creator == user and is_creator_turn) or (game.joined == user and not is_creator_turn)
     else:
-        game.state = "creator_turn"
+        is_my_turn = False
 
-    # 4. Verificar condiciones de game over
-    is_game_over, winner = __check_game_over(game, user)
+    # Contar cartas de cada jugador
+    creator_card_count = GameCardInHand.objects.filter(game=game, player=game.creator).count()
+    joined_card_count = GameCardInHand.objects.filter(game=game, player=game.joined).count() if game.joined else 0
 
-    if is_game_over:
-        game.state = "finished"
-        game.winner = winner
-
-        # Actualizar estadísticas del ganador
-        winner.games_won += 1
-        winner.games_played += 1
-        winner.save()
-
-        # Actualizar estadísticas del perdedor
-        loser = game.joined if winner == game.creator else game.creator
-        loser.games_played += 1
-        loser.save()
-
-    game.save()
+    # Contar cartas en el mazo
+    cards_in_hands = GameCardInHand.objects.filter(game=game).values_list('card_code', flat=True)
+    deck_cards = GameDeckCard.objects.filter(game=game).exclude(card_code__in=cards_in_hands)
 
     return JsonResponse({
-        "success": True,
-        "tableCard": game.table_card,
-        "gameState": game.state,
-        "isGameOver": is_game_over,
-        "winner": winner.username if is_game_over else None
+        'top_card': game_state.get('top_card', ''),
+        'is_my_turn': is_my_turn,
+        'my_card_count': creator_card_count if game.creator == user else joined_card_count,
+        'opponent_card_count': joined_card_count if game.creator == user else creator_card_count,
+        'deck_count': deck_cards.count(),
+        'game_status': game_state.get('status', 'playing'),
+        'winner': game_state.get('winner', None)
+    }, status=200)
+
+
+@csrf_exempt
+def get_playable_cards(request, room_code):
+    """
+    GET /game/{room_code}/playable
+    Obtener las cartas jugables de la mano
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    user = __get_request_user(request)
+    if user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Room not found'}, status=404)
+
+    if game.creator != user and game.joined != user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    game_state = json.loads(game.state) if game.state else {}
+    top_card_code = game_state.get('top_card', '')
+
+    # Obtener cartas del jugador
+    hand_cards = GameCardInHand.objects.filter(game=game, player=user)
+
+    playable_cards = []
+    for card in hand_cards:
+        if __is_card_playable(card.card_code, top_card_code):
+            playable_cards.append(card.card_code)
+
+    return JsonResponse({
+        'playable_cards': playable_cards,
+        'count': len(playable_cards)
     }, status=200)

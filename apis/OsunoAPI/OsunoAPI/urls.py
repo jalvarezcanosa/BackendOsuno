@@ -27,4 +27,9 @@ urlpatterns = [
     path('user/', endpoints.create_user),
     path('game/<str:room_code>/status/', endpoints.get_room_status),
     path('game/<str:room_code>/tableCard/', endpoints.play_card),
+# Endpoints del juego de cartas
+    path('game/<str:room_code>/deck', endpoints.draw_card),
+    path('game/<str:room_code>/hand', endpoints.get_hand),
+    path('game/<str:room_code>/state', endpoints.get_game_state),
+    path('game/<str:room_code>/playable', endpoints.get_playable_cards),
 ]
