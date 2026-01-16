@@ -1,9 +1,15 @@
 import json
 import secrets
+from json import JSONDecodeError
+
 import bcrypt
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import User, UserSession
+from django.utils.crypto import get_random_string
+from django.views.decorators.csrf import csrf_exempt
+
+from osunorest01app.models import UserSession, User, Game
 
 @csrf_exempt
 def health_check(request):
@@ -27,6 +33,8 @@ def create_user(request):
         body_json = json.loads(request.body)
         username = body_json['username']
         password = body_json['password']
+
+
     except (json.JSONDecodeError, KeyError):
         return JsonResponse({"error": "Missing parameter"}, status=400)
     if User.objects.filter(username=username).exists():
@@ -35,3 +43,32 @@ def create_user(request):
     user = User(username=username, encrypted_password=hashed_password)
     user.save()
     return JsonResponse({"success": True, "username": username}, status=201)
+
+@csrf_exempt
+def join_room(request, room_code):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    token = request.headers.get('Session')
+    if not token:
+        return JsonResponse({'error': 'Invalid token'}, status=401)
+
+    try:
+        session = UserSession.objects.get(token=token)
+        current_user = session.user
+    except UserSession.DoesNotExist:
+        return JsonResponse({'error': 'User not found'}, status=404)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Game not found'}, status=404)
+
+    if game.creator == current_user:
+        return JsonResponse({'error': 'You cannot join your own game'}, status=400)
+
+    game.joined = current_user
+    game.state = "room_started"
+    game.save()
+
+    return JsonResponse({'message': 'joined'}, status=200)

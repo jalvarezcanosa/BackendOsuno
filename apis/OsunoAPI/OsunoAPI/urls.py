@@ -17,8 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 
+from osunorest01app import endpoints
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    ##path('users', endpoints.users),
+    path('users', endpoints.create_user),
+    path('room', endpoints.create_room),
+    path('room/<str:room_code>', endpoints.join_room),
 ]
