@@ -25,4 +25,5 @@ urlpatterns = [
     path('health/', endpoints.health_check),
     path('users/create/', endpoints.create_user),
     path('rooms/<str:room_code>/status/', endpoints.get_room_status),
+    path('game/<str:room_code>/deck', endpoints.draw_card),
 ]
