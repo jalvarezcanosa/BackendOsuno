@@ -65,3 +65,5 @@ def get_room_status(request, room_code):
         status = "gameStarted"
 
     return JsonResponse({"status": status}, status=200)
+
+#
