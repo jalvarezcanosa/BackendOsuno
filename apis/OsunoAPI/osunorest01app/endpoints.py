@@ -4,7 +4,62 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Min
 from .models import User, UserSession, Game, GameDeckCard, GameCardInHand
 
+def __get_request_user(request):
+    header_token = request.headers.get('Session', None)
+    if header_token is None:
+        return None
+    try:
+        db_session = UserSession.objects.get(token=header_token)
+        return db_session.user
+    except UserSession.DoesNotExist:
+        return None
 
+
+@csrf_exempt
+def create_user(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+    try:
+        body_json = json.loads(request.body)
+        username = body_json['username']
+        password = body_json['password']
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({"error": "Missing parameter"}, status=400)
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({"error": "User already exists"}, status=409)
+    hashed_password = bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt()).decode('utf8')
+    user = User(username=username, encrypted_password=hashed_password)
+    user.save()
+    return JsonResponse({"success": True, "username": username}, status=201)
+
+
+@csrf_exempt
+def get_room_status(request, room_code):
+    if request.method != 'GET':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    user = __get_request_user(request)
+    if user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Room not found'}, status=404)
+
+    # Verificar que el usuario pertenece a la sala
+    if game.creator != user and game.joined != user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    # Determinar el estado de la sala
+    if game.joined is None:
+        status = "waiting"
+    else:
+        status = "gameStarted"
+
+    return JsonResponse({"status": status}, status=200)
+
+#
 def __get_request_user(request):
     header_token = request.headers.get('Session', None)
     if header_token is None:
