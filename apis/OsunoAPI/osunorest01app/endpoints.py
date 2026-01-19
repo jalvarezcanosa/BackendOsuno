@@ -49,15 +49,7 @@ def join_room(request, room_code):
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
 
-    token = request.headers.get('Session')
-    if not token:
-        return JsonResponse({'error': 'Invalid token'}, status=401)
-
-    try:
-        session = UserSession.objects.get(token=token)
-        current_user = session.user
-    except UserSession.DoesNotExist:
-        return JsonResponse({'error': 'User not found'}, status=404)
+    current_user = __get_request_user(request)
 
     try:
         game = Game.objects.get(code=room_code)
