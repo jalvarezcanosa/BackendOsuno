@@ -3,7 +3,9 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Min
 from .models import User, UserSession, Game, GameDeckCard, GameCardInHand
-
+@csrf_exempt
+def health_check(request):
+    return JsonResponse({"is_alive": True}, status=200)
 def __get_request_user(request):
     header_token = request.headers.get('Session', None)
     if header_token is None:
