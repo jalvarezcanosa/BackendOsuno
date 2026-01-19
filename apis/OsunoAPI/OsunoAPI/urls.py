@@ -17,9 +17,10 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from osunorest01app import endpoints
+from osunorest01app import endpoints_gamestate
 urlpatterns = [
     path('health', endpoints.health_check),
     path('users', endpoints.create_user),
     path('sessions', endpoints.login),
     path('users/me', endpoints.get_me),
-]
+    path('game/<str:room_code>', endpoints.get_game_state),]
