@@ -23,4 +23,4 @@ urlpatterns = [
     path('users', endpoints.create_user),
     path('sessions', endpoints.login),
     path('users/me', endpoints.get_me),
-    path('game/<str:room_code>', endpoints.get_game_state),]
+    path('game/<str:room_code>', endpoints_gamestate.get_game_state),]
