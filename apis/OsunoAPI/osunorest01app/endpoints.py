@@ -175,4 +175,5 @@ def handle_room(request, room_code):
         return get_room_status(request,room_code)
     elif request.method == 'POST':
         return join_room(request, room_code)
-
+    else:
+        return JsonResponse({'error': 'Method not supported'}, status=405)
