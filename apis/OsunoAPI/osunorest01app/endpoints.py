@@ -21,25 +21,6 @@ def __get_request_user(request):
     except UserSession.DoesNotExist:
         return None
 
-
-@csrf_exempt
-def create_user(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
-    try:
-        body_json = json.loads(request.body)
-        username = body_json['username']
-        password = body_json['password']
-    except (json.JSONDecodeError, KeyError):
-        return JsonResponse({"error": "Missing parameter"}, status=400)
-    if User.objects.filter(username=username).exists():
-        return JsonResponse({"error": "User already exists"}, status=409)
-    hashed_password = bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt()).decode('utf8')
-    user = User(username=username, encrypted_password=hashed_password)
-    user.save()
-    return JsonResponse({"success": True, "username": username}, status=201)
-
-
 @csrf_exempt
 def get_room_status(request, room_code):
     if request.method != 'GET':

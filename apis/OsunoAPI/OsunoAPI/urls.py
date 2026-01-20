@@ -23,6 +23,5 @@ from osunorest01app import endpoints
 
 urlpatterns = [
     path('health/', endpoints.health_check),
-    path('users/create/', endpoints.create_user),
-    path('rooms/<str:room_code>/status/', endpoints.get_room_status),
+    path('room/<str:room_code>', endpoints.get_room_status),
 ]
