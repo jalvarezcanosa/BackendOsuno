@@ -67,7 +67,7 @@ def get_me(request):
 
     user = __get_request_user(request)
     if user is None:
-        return JsonResponse({'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'error': 'Invalid token'}, status=401)
 
     games_won = Game.objects.filter(creator=user, state='creator_won').count()
     games_won += Game.objects.filter(joined=user, state='joined_won').count()
@@ -87,15 +87,9 @@ def create_room(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=400)
 
-    token = request.headers.get('Session')
-    if not token:
+    current_user = __get_request_user(request)
+    if current_user is None:
         return JsonResponse({'error': 'Invalid token'}, status=401)
-
-    try:
-        session = UserSession.objects.get(token=token)
-        current_user = session.user
-    except UserSession.DoesNotExist:
-        return JsonResponse({'error': 'User not found'}, status=404)
 
     last_game = Game.objects.last()
 
@@ -129,6 +123,8 @@ def join_room(request, room_code):
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
 
     current_user = __get_request_user(request)
+    if current_user is None:
+        return JsonResponse({'error': 'Invalid token'}, status=401)
 
     try:
         game = Game.objects.get(code=room_code)

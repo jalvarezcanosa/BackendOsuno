@@ -9,7 +9,7 @@ class UserSession(models.Model):
     token = models.CharField(unique=True, max_length=32)
 
 class Game(models.Model):
-    code = models.CharField(unique=True, max_length=10)
+    code = models.CharField(unique=True, max_length=10, null=True)
     state = models.CharField(max_length=30) #room_not_started, creator_won, joined_won, in_progress?, draw?
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="creator")
     joined = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name="joined")
