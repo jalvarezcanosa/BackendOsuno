@@ -22,4 +22,6 @@ urlpatterns = [
     path('users', endpoints.create_user),
     path('sessions', endpoints.login),
     path('users/me', endpoints.get_me),
+    path('admin/', admin.site.urls),
+    path('room', endpoints.create_room),
 ]

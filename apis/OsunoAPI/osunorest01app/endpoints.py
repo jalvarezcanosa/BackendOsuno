@@ -2,6 +2,7 @@ import json
 import secrets
 import bcrypt
 from django.http import JsonResponse
+from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt
 from .models import User, UserSession, Game
 
@@ -79,3 +80,44 @@ def get_me(request):
         "gamesWon": games_won,
         "gamesPlayed": games_played
     }, status=200)
+
+
+@csrf_exempt
+def create_room(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=400)
+
+    token = request.headers.get('Session')
+    if not token:
+        return JsonResponse({'error': 'Invalid token'}, status=401)
+
+    try:
+        session = UserSession.objects.get(token=token)
+        current_user = session.user
+    except UserSession.DoesNotExist:
+        return JsonResponse({'error': 'User not found'}, status=404)
+
+    last_game = Game.objects.last()
+
+    if last_game:
+        next_id = last_game.id + 1
+    else:
+        next_id = 1
+
+    prefix = get_random_string(length=2, allowed_chars='abcdefghijklmnopqrstuvwxyz')
+    suffix = get_random_string(length=1, allowed_chars='abcdefghijklmnopqrstuvwxyz')
+
+    final_code = f'{prefix}{next_id}{suffix}'
+
+    try:
+        new_game = Game.objects.create(
+            code = final_code,
+            state="room_not_started",
+            creator=current_user,
+        )
+
+        return JsonResponse({"roomCode": new_game.code}, status=201)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
