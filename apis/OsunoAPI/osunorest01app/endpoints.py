@@ -148,7 +148,7 @@ def join_room(request, room_code):
             deck = []
 
             for color in colors:
-                for num in range(1, 9):
+                for num in range(0, 9):
                     card_code = f"{color}{num}"
                     deck.append(card_code)
             random.shuffle(deck)
