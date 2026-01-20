@@ -1,12 +1,15 @@
 import json
+import random
 import secrets
 from idlelib.rpc import request_queue
 
 import bcrypt
+from django.db import transaction
 from django.http import JsonResponse
 from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt
-from osunorest01app.models import User, UserSession, Game
+from osunorest01app.models import User, UserSession, Game, GameDeckCard, GameCardInHand
+
 
 @csrf_exempt
 def health_check(request):
@@ -136,11 +139,61 @@ def join_room(request, room_code):
     if game.creator == current_user:
         return JsonResponse({'error': 'You cannot join your own game'}, status=400)
 
-    game.joined = current_user
-    game.state = "room_started"
-    game.save()
+    if game.joined is not None:
+        return JsonResponse({'error': 'Room is already full'}, status=409)
 
-    return JsonResponse({'message': 'joined'}, status=200)
+    try:
+        with transaction.atomic():
+            colors = ['Red', 'Green', 'Blue', 'Yellow']
+            deck = []
+
+            for color in colors:
+                for num in range(1, 9):
+                    card_code = f"{color}{num}"
+                    deck.append(card_code)
+            random.shuffle(deck)
+
+            hand_creator = deck[:7]
+            hand_joiner = deck[7:14]
+            remaining_deck = deck[14:]
+
+            card_in_hand = []
+
+            for card in hand_creator:
+                card_in_hand.append(GameCardInHand(
+                    card_code = card,
+                    player = game.creator,
+                    game = game
+                ))
+
+            for card in hand_joiner:
+                card_in_hand.append(GameCardInHand(
+                    card_code = card,
+                    player = current_user,
+                    game = game
+                ))
+
+            GameCardInHand.objects.bulk_create(card_in_hand)
+
+            deck_objs = []
+            for i, card in enumerate(remaining_deck):
+                deck_objs.append(GameDeckCard(
+                    game = game,
+                    card_code = card,
+                    initial_position = i
+                ))
+
+            GameDeckCard.objects.bulk_create(deck_objs)
+
+
+            game.joined = current_user
+            game.state = "room_started"
+            game.save()
+
+        return JsonResponse({'message': 'joined'}, status=200)
+
+    except Exception as e:
+        return JsonResponse({'error': f'Error creating game deck: {str(e)}'}, status=500)
 
 def get_room_status(request, room_code):
     if request.method != 'GET':
