@@ -1,11 +1,16 @@
 import json
+
+import bcrypt
 from django.http import JsonResponse
+from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Min
 from .models import User, UserSession, Game, GameDeckCard, GameCardInHand
+
 @csrf_exempt
 def health_check(request):
     return JsonResponse({"is_alive": True}, status=200)
+
 def __get_request_user(request):
     header_token = request.headers.get('Session', None)
     if header_token is None:
@@ -216,6 +221,38 @@ def draw_card(request, room_code):
         'cards_in_deck': remaining_cards.count() if remaining_cards.exists() else 0
     }, status=200)
 
+@csrf_exempt
+def create_room(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=400)
+
+    token = request.headers.get('Session')
+
+    if not token:
+        return JsonResponse({'error': 'Invalid token'}, status=401)
+
+    try:
+        session = UserSession.objects.get(token=token)
+        current_user = session.user
+    except UserSession.DoesNotExist:
+        return JsonResponse({'error': 'User not found'}, status=404)
+
+    while True:
+        room_code = get_random_string(length=3, allowed_chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        if not Game.objects.filter(code=room_code).exists():
+            break
+
+    try:
+        new_game = Game.objects.create(
+            code = room_code,
+            state="room_not_started",
+            creator=current_user,
+        )
+
+        return JsonResponse({"roomCode": new_game.code}, status=201)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 @csrf_exempt
 def play_card(request, room_code):

@@ -3,8 +3,6 @@ from django.db import models
 class User(models.Model):
     username = models.CharField(max_length=220)
     encrypted_password = models.CharField(max_length=120)
-    games_won = models.IntegerField(default=0)
-    games_played = models.IntegerField(default=0)
 
 class UserSession(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

@@ -23,9 +23,10 @@ from osunorest01app import endpoints
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('room', endpoints.create_room),
     path('health/', endpoints.health_check),
-    path('user/', endpoints.create_user),
-    path('game/<str:room_code>/status/', endpoints.get_room_status),
+    path('user', endpoints.create_user),
+    path('room/<str:room_code>/status', endpoints.get_room_status),##debe ser la misma url que el método de join_room
     path('game/<str:room_code>/tableCard/', endpoints.play_card),
 # Endpoints del juego de cartas
     path('game/<str:room_code>/deck', endpoints.draw_card),
