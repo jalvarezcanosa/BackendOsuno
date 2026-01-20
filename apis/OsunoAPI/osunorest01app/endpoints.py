@@ -1,5 +1,4 @@
 import json
-
 import bcrypt
 from django.http import JsonResponse
 from django.utils.crypto import get_random_string
@@ -7,9 +6,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Min
 from .models import User, UserSession, Game, GameDeckCard, GameCardInHand
 
+
 @csrf_exempt
 def health_check(request):
     return JsonResponse({"is_alive": True}, status=200)
+
 
 def __get_request_user(request):
     header_token = request.headers.get('Session', None)
@@ -21,6 +22,64 @@ def __get_request_user(request):
     except UserSession.DoesNotExist:
         return None
 
+
+def __check_playable_cards(hand_cards, top_card_code):
+    """Verifica si hay cartas jugables en la mano"""
+    if not hand_cards or not top_card_code:
+        return False
+
+    top_color = top_card_code[0] if len(top_card_code) > 0 else None
+    top_value = top_card_code[1:] if len(top_card_code) > 1 else None
+
+    for card in hand_cards:
+        card_code = card.card_code
+        card_color = card_code[0] if len(card_code) > 0 else None
+        card_value = card_code[1:] if len(card_code) > 1 else None
+
+        if card_color == 'W':  # Comodines
+            return True
+        if card_color == top_color or card_value == top_value:
+            return True
+
+    return False
+
+
+def __determine_winner(creator, joined, game):
+    """Determina el ganador basado en quien tiene menos cartas"""
+    creator_cards = GameCardInHand.objects.filter(game=game, player=creator).count()
+    joined_cards = GameCardInHand.objects.filter(game=game, player=joined).count()
+
+    if creator_cards < joined_cards:
+        return creator
+    elif joined_cards < creator_cards:
+        return joined
+    else:
+        return creator
+
+
+def __is_card_playable(card_code, top_card_code):
+    """Verifica si una carta específica puede jugarse"""
+    if not card_code or not top_card_code:
+        return False
+
+    card_color = card_code[0] if len(card_code) > 0 else None
+    card_value = card_code[1:] if len(card_code) > 1 else None
+
+    top_color = top_card_code[0] if len(top_card_code) > 0 else None
+    top_value = top_card_code[1:] if len(top_card_code) > 1 else None
+
+    # Comodines siempre pueden jugarse
+    if card_color == 'W':
+        return True
+
+    # Mismo color o mismo valor
+    if card_color == top_color or card_value == top_value:
+        return True
+
+    return False
+
+
+# ================= ENDPOINTS =================
 
 @csrf_exempt
 def create_user(request):
@@ -54,11 +113,9 @@ def get_room_status(request, room_code):
     except Game.DoesNotExist:
         return JsonResponse({'error': 'Room not found'}, status=404)
 
-    # Verificar que el usuario pertenece a la sala
     if game.creator != user and game.joined != user:
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
-    # Determinar el estado de la sala
     if game.joined is None:
         status = "waiting"
     else:
@@ -66,68 +123,6 @@ def get_room_status(request, room_code):
 
     return JsonResponse({"status": status}, status=200)
 
-#
-def __get_request_user(request):
-    header_token = request.headers.get('Session', None)
-    if header_token is None:
-        return None
-    try:
-        db_session = UserSession.objects.get(token=header_token)
-        return db_session.user
-    except UserSession.DoesNotExist:
-        return None
-
-
-def __check_playable_cards(hand_cards, top_card_code, game):
-    """Verifica si hay cartas jugables en la mano"""
-    top_color = top_card_code[0] if len(top_card_code) > 0 else None
-    top_value = top_card_code[1:] if len(top_card_code) > 1 else None
-
-    for card in hand_cards:
-        card_color = card.card_code[0] if len(card.card_code) > 0 else None
-        card_value = card.card_code[1:] if len(card.card_code) > 1 else None
-
-        if card_color == 'W':  # Comodines
-            return True
-        if card_color == top_color or card_value == top_value:
-            return True
-
-    return False
-
-
-def __determine_winner(creator, joined, game):
-    """Determina el ganador basado en quien tiene menos cartas"""
-    creator_cards = GameCardInHand.objects.filter(game=game, player=creator).count()
-    joined_cards = GameCardInHand.objects.filter(game=game, player=joined).count()
-
-    if creator_cards < joined_cards:
-        return creator
-    elif joined_cards < creator_cards:
-        return joined
-    else:
-        return creator
-
-
-def __is_card_playable(card_code, top_card_code):
-    """Verifica si una carta específica puede jugarse"""
-    card_color = card_code[0] if len(card_code) > 0 else None
-    card_value = card_code[1:] if len(card_code) > 1 else None
-
-    top_color = top_card_code[0] if len(top_card_code) > 0 else None
-    top_value = top_card_code[1:] if len(top_card_code) > 1 else None
-
-    # Comodines siempre pueden jugarse
-    if card_color == 'W':
-        return True
-
-    # Mismo color o mismo valor
-    if card_color == top_color or card_value == top_value:
-        return True
-
-    return False
-
-
-# ================= ENDPOINTS =================
 
 @csrf_exempt
 def draw_card(request, room_code):
@@ -150,7 +145,6 @@ def draw_card(request, room_code):
     if game.creator != user and game.joined != user:
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
-    game_state = json.loads(game.state) if game.state else {}
     is_creator = (game.creator == user)
 
     any_deck_card = GameDeckCard.objects.filter(game=game).first()
@@ -162,6 +156,7 @@ def draw_card(request, room_code):
     if is_creator != is_creator_turn:
         return JsonResponse({'error': 'Not your turn'}, status=403)
 
+    # Obtener cartas disponibles en el mazo
     deck_cards = GameDeckCard.objects.filter(game=game).order_by('initial_position')
     cards_in_hands = GameCardInHand.objects.filter(game=game).values_list('card_code', flat=True)
     available_cards = deck_cards.exclude(card_code__in=cards_in_hands)
@@ -171,24 +166,24 @@ def draw_card(request, room_code):
 
     card_to_draw = available_cards.first()
 
-    new_card = GameCardInHand(
+    GameCardInHand.objects.create(
         card_code=card_to_draw.card_code,
         player=user,
         game=game
     )
-    new_card.save()
 
     remaining_cards = available_cards.exclude(card_code=card_to_draw.card_code)
 
     if not remaining_cards.exists():
+        game_state = json.loads(game.state) if game.state else {}
         top_card_code = game_state.get('top_card', '')
         current_player_cards = GameCardInHand.objects.filter(game=game, player=user)
-        has_playable = __check_playable_cards(current_player_cards, top_card_code, game)
+        has_playable = __check_playable_cards(current_player_cards, top_card_code)
 
         if not has_playable:
             rival = game.joined if is_creator else game.creator
             rival_cards = GameCardInHand.objects.filter(game=game, player=rival)
-            rival_has_playable = __check_playable_cards(rival_cards, top_card_code, game)
+            rival_has_playable = __check_playable_cards(rival_cards, top_card_code)
 
             if rival_has_playable:
                 GameDeckCard.objects.filter(game=game).update(
@@ -218,8 +213,9 @@ def draw_card(request, room_code):
 
     return JsonResponse({
         'message': 'Carta robada exitosamente',
-        'cards_in_deck': remaining_cards.count() if remaining_cards.exists() else 0
+        'cards_in_deck': remaining_cards.count()
     }, status=200)
+
 
 @csrf_exempt
 def create_room(request):
@@ -227,7 +223,6 @@ def create_room(request):
         return JsonResponse({'error': 'HTTP method not supported'}, status=400)
 
     token = request.headers.get('Session')
-
     if not token:
         return JsonResponse({'error': 'Invalid token'}, status=401)
 
@@ -244,15 +239,14 @@ def create_room(request):
 
     try:
         new_game = Game.objects.create(
-            code = room_code,
-            state="room_not_started",
+            code=room_code,
+            state="{}",
             creator=current_user,
         )
-
         return JsonResponse({"roomCode": new_game.code}, status=201)
-
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
 
 @csrf_exempt
 def play_card(request, room_code):
