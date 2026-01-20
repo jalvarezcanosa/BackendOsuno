@@ -26,5 +26,5 @@ urlpatterns = [
     path('users/me', endpoints.get_me),
     path('admin/', admin.site.urls),
     path('room', endpoints.create_room),
-    path('room/<str:room_code>', endpoints.join_room),
+    path('room/<str:room_code>', endpoints.handle_room),
 ]

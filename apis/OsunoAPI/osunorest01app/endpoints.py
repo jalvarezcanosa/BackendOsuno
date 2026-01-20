@@ -1,5 +1,7 @@
 import json
 import secrets
+from idlelib.rpc import request_queue
+
 import bcrypt
 from django.http import JsonResponse
 from django.utils.crypto import get_random_string
@@ -117,7 +119,7 @@ def create_room(request):
 
 
 
-@csrf_exempt
+
 def join_room(request, room_code):
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
@@ -139,3 +141,35 @@ def join_room(request, room_code):
     game.save()
 
     return JsonResponse({'message': 'joined'}, status=200)
+
+def get_room_status(request, room_code):
+    if request.method != 'GET':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    user = __get_request_user(request)
+    if user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Room not found'}, status=404)
+
+    # Verificar que el usuario pertenece a la sala
+    if game.creator != user and game.joined != user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    # Determinar el estado de la sala
+    if game.joined is None:
+        status = "waiting"
+    else:
+        status = "gameStarted"
+
+    return JsonResponse({"status": status}, status=200)
+
+@csrf_exempt
+def handle_room(request, room_code):
+    if request.method == 'GET':
+        return get_room_status(request,room_code)
+    elif request.method == 'POST':
+        return join_room(request, room_code)
