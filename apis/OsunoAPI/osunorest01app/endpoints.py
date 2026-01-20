@@ -142,6 +142,7 @@ def join_room(request, room_code):
 
     return JsonResponse({'message': 'joined'}, status=200)
 
+
 def get_room_status(request, room_code):
     if request.method != 'GET':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
@@ -167,9 +168,11 @@ def get_room_status(request, room_code):
 
     return JsonResponse({"status": status}, status=200)
 
+
 @csrf_exempt
 def handle_room(request, room_code):
     if request.method == 'GET':
         return get_room_status(request,room_code)
     elif request.method == 'POST':
         return join_room(request, room_code)
+
