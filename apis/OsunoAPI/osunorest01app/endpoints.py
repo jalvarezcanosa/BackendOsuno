@@ -56,7 +56,6 @@ def create_room(request):
         return JsonResponse({'error': 'HTTP method not supported'}, status=400)
 
     token = request.headers.get('Session')
-
     if not token:
         return JsonResponse({'error': 'Invalid token'}, status=401)
 
@@ -66,14 +65,21 @@ def create_room(request):
     except UserSession.DoesNotExist:
         return JsonResponse({'error': 'User not found'}, status=404)
 
-    while True:
-        room_code = get_random_string(length=3, allowed_chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ')
-        if not Game.objects.filter(code=room_code).exists():
-            break
+    last_game = Game.objects.last()
+
+    if last_game:
+        next_id = last_game.id + 1
+    else:
+        next_id = 1
+
+    prefix = get_random_string(length=2, allowed_chars='abcdefghijklmnopqrstuvwxyz')
+    suffix = get_random_string(length=1, allowed_chars='abcdefghijklmnopqrstuvwxyz')
+
+    final_code = f'{prefix}{next_id}{suffix}'
 
     try:
         new_game = Game.objects.create(
-            code = room_code,
+            code = final_code,
             state="room_not_started",
             creator=current_user,
         )
