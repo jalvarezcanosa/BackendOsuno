@@ -4,7 +4,7 @@ import bcrypt
 from django.http import JsonResponse
 from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt
-from .models import User, UserSession, Game
+from osunorest01app.models import User, UserSession, Game
 
 @csrf_exempt
 def health_check(request):
