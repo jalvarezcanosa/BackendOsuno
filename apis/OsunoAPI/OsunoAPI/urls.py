@@ -16,7 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from osunorest01app import endpoints
+
+
 urlpatterns = [
     path('health', endpoints.health_check),
     path('users', endpoints.create_user),
@@ -24,4 +25,5 @@ urlpatterns = [
     path('users/me', endpoints.get_me),
     path('admin/', admin.site.urls),
     path('room', endpoints.create_room),
+    path('room/<str:room_code>', endpoints.join_room),
 ]

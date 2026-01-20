@@ -121,3 +121,25 @@ def create_room(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+
+
+@csrf_exempt
+def join_room(request, room_code):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    current_user = __get_request_user(request)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Game not found'}, status=404)
+
+    if game.creator == current_user:
+        return JsonResponse({'error': 'You cannot join your own game'}, status=400)
+
+    game.joined = current_user
+    game.state = "room_started"
+    game.save()
+
+    return JsonResponse({'message': 'joined'}, status=200)
