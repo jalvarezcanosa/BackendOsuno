@@ -148,7 +148,7 @@ def join_room(request, room_code):
             deck = []
 
             for color in colors:
-                for num in range(0, 9):
+                for num in range(0, 10):
                     card_code = f"{color}{num}"
                     deck.append(card_code)
             random.shuffle(deck)
@@ -184,7 +184,6 @@ def join_room(request, room_code):
                 ))
 
             GameDeckCard.objects.bulk_create(deck_objs)
-
 
             game.joined = current_user
             game.state = "room_started"
