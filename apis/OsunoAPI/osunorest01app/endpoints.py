@@ -121,8 +121,6 @@ def create_room(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-
-
 def join_room(request, room_code):
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
@@ -229,3 +227,20 @@ def handle_room(request, room_code):
         return join_room(request, room_code)
     else:
         return JsonResponse({'error': 'Method not supported'}, status=405)
+
+def steal_card(request, room_code):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    current_user = __get_request_user(request)
+    if current_user is None:
+        return JsonResponse({'error': 'Invalid token'}, status=401)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Game not found'}, status=404)
+
+    if game.creator != current_user and game.joined != current_user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
