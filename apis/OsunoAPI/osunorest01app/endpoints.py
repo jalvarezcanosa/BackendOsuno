@@ -265,7 +265,6 @@ def play_card(request, room_code):
     try:
         body_json = json.loads(request.body)
         card_code = body_json['card_code']
-        chosen_color = body_json.get('color', None)  # Para comodines
     except (json.JSONDecodeError, KeyError):
         return JsonResponse({"error": "Missing parameter"}, status=400)
 
@@ -308,24 +307,28 @@ def play_card(request, room_code):
     card_in_hand.delete()
 
     # Actualizar carta superior
-    if card_code[0] == 'W' and chosen_color:
-        game_state['top_card'] = chosen_color + card_code[1:]
+    if card_code[0] == 'W':
+        game_state['top_card'] = card_code[1:]
     else:
         game_state['top_card'] = card_code
 
     # Verificar si el jugador ganó (no tiene más cartas)
     remaining_cards = GameCardInHand.objects.filter(game=game, player=user).count()
     if remaining_cards == 0:
+
+        ''' Toda esta parte que tengo comentada va a fallar porque no existen estos campos en BBDD
         user.games_won += 1
         user.games_played += 1
         user.save()
 
         rival = game.joined if is_creator else game.creator
         rival.games_played += 1
-        rival.save()
+        rival.save()'''
 
+        ##Si el creador ganó status = creator_won si ganó el joined status = joined_won
         game_state['status'] = 'finished'
         game_state['winner'] = user.username
+        ##Reason me sobra muchísimo
         game_state['reason'] = 'No cards left'
         game.state = json.dumps(game_state)
         game.save()
