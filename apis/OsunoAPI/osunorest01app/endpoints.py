@@ -244,3 +244,49 @@ def steal_card(request, room_code):
     if game.creator != current_user and game.joined != current_user:
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
+    if game.is_creator_turn:
+        player_turn = game.creator
+    else:
+        player_turn = game.joined
+
+    if current_user != player_turn:
+        return JsonResponse({'error': 'Not your turn'}, status=403)
+
+    try:
+        with transaction.atomic():
+            deck_cards = GameDeckCard.objects.filter(game=game).order_by('initial_position')
+
+            if not deck_cards.exists():
+                creator_count = GameCardInHand.objects.filter(game=game, player=game.creator).count()
+                joined_count = GameCardInHand.objects.filter(game=game, player=game.joined).count()
+
+                if creator_count < joined_count:
+                    game.state = 'creator_won'
+                elif joined_count < creator_count:
+                    game.state = 'joined_won'
+                else:
+                    game.state = 'draw'
+
+                game.save()
+
+                return JsonResponse({
+                    'message': 'Game Over',
+                    'state': game.state,
+                    'scores': {'creator': creator_count, 'joined': joined_count}
+                }, status=201)
+
+            else:
+                card_to_steal = deck_cards.first()
+
+                GameCardInHand.objects.create(
+                    game=game,
+                    player=current_user,
+                    card_code=card_to_steal.card_code
+                )
+
+                card_to_steal.delete()
+
+                game.save()
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
