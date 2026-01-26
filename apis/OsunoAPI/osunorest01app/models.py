@@ -14,6 +14,7 @@ class Game(models.Model):
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="creator")
     joined = models.ForeignKey(User, on_delete=models.CASCADE, null=True, default=None, related_name="joined")
     is_creator_turn = models.BooleanField(default=True)
+    card_in_table = models.CharField(max_length=10)
 
 class GameDeckCard(models.Model):
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
