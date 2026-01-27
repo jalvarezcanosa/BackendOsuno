@@ -1,8 +1,6 @@
 import json
 import random
 import secrets
-from idlelib.rpc import request_queue
-
 import bcrypt
 from django.db import transaction
 from django.http import JsonResponse
@@ -42,6 +40,7 @@ def create_user(request):
     user.save()
     return JsonResponse({"success": True, "username": username}, status=201)
 
+
 @csrf_exempt
 def login(request):
     if request.method != 'POST':
@@ -65,6 +64,7 @@ def login(request):
     return JsonResponse(
         {"sessionToken": token}, status=201)
 
+
 @csrf_exempt
 def get_me(request):
     if request.method != 'GET':
@@ -74,11 +74,14 @@ def get_me(request):
     if user is None:
         return JsonResponse({'error': 'Invalid token'}, status=401)
 
+    # Contar sólo partidas finalizadas
+    finished_states = ['creator_won', 'joined_won', 'draw']
+
     games_won = Game.objects.filter(creator=user, state='creator_won').count()
     games_won += Game.objects.filter(joined=user, state='joined_won').count()
 
-    games_played = Game.objects.filter(creator=user).count()
-    games_played += Game.objects.filter(joined=user).count()
+    games_played = Game.objects.filter(creator=user, state__in=finished_states).count()
+    games_played += Game.objects.filter(joined=user, state__in=finished_states).count()
 
     return JsonResponse({
         "username": user.username,
@@ -121,8 +124,7 @@ def create_room(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-
-
+@csrf_exempt
 def join_room(request, room_code):
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
@@ -144,7 +146,7 @@ def join_room(request, room_code):
 
     try:
         with transaction.atomic():
-            colors = ['Red', 'Green', 'Blue', 'Yellow']
+            colors = ['R', 'G', 'B', 'Y']
             deck = []
 
             for color in colors:
@@ -186,7 +188,7 @@ def join_room(request, room_code):
             GameDeckCard.objects.bulk_create(deck_objs)
 
             game.joined = current_user
-            game.state = "room_started"
+            game.state = "in_progress"
             game.save()
 
         return JsonResponse({'message': 'joined'}, status=200)
@@ -195,6 +197,7 @@ def join_room(request, room_code):
         return JsonResponse({'error': f'Error creating game deck: {str(e)}'}, status=500)
 
 
+@csrf_exempt
 def get_room_status(request, room_code):
     if request.method != 'GET':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
@@ -229,3 +232,106 @@ def handle_room(request, room_code):
         return join_room(request, room_code)
     else:
         return JsonResponse({'error': 'Method not supported'}, status=405)
+
+@csrf_exempt
+def _parse_card(card_code: str):
+    if not card_code or len(card_code) < 2:
+        return ('', '')
+    c = card_code[0].lower()
+    if c not in ('r', 'g', 'b', 'y'):
+        return ('', '')
+    num = card_code[1:]
+    if not num.isdigit():
+        return ('', '')
+    return (c, num)
+
+
+@csrf_exempt
+def play_card(request, room_code):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    user = __get_request_user(request)
+    if user is None:
+        return JsonResponse({'error': 'Invalid token'}, status=401)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Room not found'}, status=404)
+
+    # Verificar que el usuario pertenece a la sala
+    if game.creator != user and game.joined != user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    # verificar que la sala ya ha empezado
+    if game.joined is None:
+        return JsonResponse({'error': 'Game has no opponent yet'}, status=403)
+
+    # Verificar que el usuario es el turno actual
+    is_creator_turn = game.is_creator_turn
+    if is_creator_turn and game.creator != user:
+        return JsonResponse({'error': 'Not your turn'}, status=403)
+    if (not is_creator_turn) and game.joined != user:
+        return JsonResponse({'error': 'Not your turn'}, status=403)
+
+    # Decidir ganador en mazo vacío
+    if not GameDeckCard.objects.filter(game=game).exists():
+        creator_count = GameCardInHand.objects.filter(game=game, player=game.creator).count()
+        joined_count = GameCardInHand.objects.filter(game=game, player=game.joined).count()
+
+        if creator_count < joined_count:
+            game.state = 'creator_won'
+        elif joined_count < creator_count:
+            game.state = 'joined_won'
+        else:
+            game.state = 'draw'
+
+        game.save()
+        return JsonResponse({'message': 'game finished, deck empty', 'state': game.state}, status=201)
+
+    # Parsear request body
+    try:
+        body = json.loads(request.body)
+        card_to_play = body['cardToPlay']
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({"error": "Missing parameter"}, status=400)
+
+    # Verificar que el usuario tiene la carta en su mano
+    has_card_qs = GameCardInHand.objects.filter(game=game, player=user, card_code=card_to_play)
+    if not has_card_qs.exists():
+        return JsonResponse({'error': 'You do not have that card'}, status=403)
+
+    # Verificar que es jugable (color o número)
+    table_card = (game.card_in_table or '').lower()
+    if table_card in ('', 'none'):
+        valid_play = True
+    else:
+        table_color, table_num = _parse_card(table_card)
+        play_color, play_num = _parse_card(card_to_play.lower())
+        valid_play = (play_color != '') and ((play_color == table_color) or (play_num == table_num))
+
+    if not valid_play:
+        return JsonResponse({'error': 'Card does not match color or number'}, status=403)
+
+    try:
+        with transaction.atomic():
+            # Quitar carta de mano
+            has_card_qs.delete()
+
+            # Actualizar carta en mesa y turno
+            game.card_in_table = card_to_play
+            game.is_creator_turn = not game.is_creator_turn
+
+            # Verificar ganador por 0 cartas en mano
+            remaining = GameCardInHand.objects.filter(game=game, player=user).count()
+            if remaining == 0:
+                if user == game.creator:
+                    game.state = 'creator_won'
+                else:
+                    game.state = 'joined_won'
+            game.save()
+
+        return JsonResponse({'message': 'card played'}, status=201)
+    except Exception as e:
+        return JsonResponse({'error': f'Error playing card: {str(e)}'}, status=500)
