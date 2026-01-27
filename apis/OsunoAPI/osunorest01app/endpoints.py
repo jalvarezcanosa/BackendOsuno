@@ -121,8 +121,6 @@ def create_room(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-
-
 def join_room(request, room_code):
     if request.method != 'POST':
         return JsonResponse({'error': 'HTTP method not supported'}, status=405)
@@ -155,7 +153,8 @@ def join_room(request, room_code):
 
             hand_creator = deck[:7]
             hand_joiner = deck[7:14]
-            remaining_deck = deck[14:]
+            first_card_in_table = deck[14]
+            remaining_deck = deck[15:]
 
             card_in_hand = []
 
@@ -187,6 +186,7 @@ def join_room(request, room_code):
 
             game.joined = current_user
             game.state = "room_started"
+            game.card_in_table = first_card_in_table
             game.save()
 
         return JsonResponse({'message': 'joined'}, status=200)
@@ -229,3 +229,79 @@ def handle_room(request, room_code):
         return join_room(request, room_code)
     else:
         return JsonResponse({'error': 'Method not supported'}, status=405)
+
+@csrf_exempt
+def steal_card(request, room_code):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    current_user = __get_request_user(request)
+    if current_user is None:
+        return JsonResponse({'error': 'Invalid token'}, status=401)
+
+    try:
+        game = Game.objects.get(code=room_code)
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Game not found'}, status=404)
+
+    if game.creator != current_user and game.joined != current_user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    if game.is_creator_turn:
+        player_turn = game.creator
+    else:
+        player_turn = game.joined
+
+    if current_user != player_turn:
+        return JsonResponse({'error': 'Not your turn'}, status=403)
+
+    top_value = game.card_in_table[-1]
+    top_color = game.card_in_table[:-1]
+
+    try:
+        with transaction.atomic():
+
+            while(True):
+                deck_cards = GameDeckCard.objects.filter(game=game).order_by('initial_position')
+
+                if not deck_cards.exists():
+                    creator_count = GameCardInHand.objects.filter(game=game, player=game.creator).count()
+                    joined_count = GameCardInHand.objects.filter(game=game, player=game.joined).count()
+
+                    if creator_count < joined_count:
+                        game.state = 'creator_won'
+                    elif joined_count < creator_count:
+                        game.state = 'joined_won'
+                    else:
+                        game.state = 'draw'
+
+                    game.save()
+
+                    return JsonResponse({
+                        'message': 'Game Over',
+                        'state': game.state,
+                        'scores': {'creator': creator_count, 'joined': joined_count}
+                    }, status=201)
+
+                else:
+                    card_to_steal = deck_cards.first()
+                    new_card_code = card_to_steal.card_code
+
+                    GameCardInHand.objects.create(
+                        game=game,
+                        player=current_user,
+                        card_code=new_card_code
+                    )
+
+                    card_to_steal.delete()
+
+                    new_value = new_card_code[-1]
+                    new_color = new_card_code[:-1]
+
+                    if new_value == top_value or new_color == top_color:
+                        return JsonResponse({'message': 'Playable card stolen'})
+
+                    game.save()
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
