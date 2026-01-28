@@ -27,4 +27,5 @@ urlpatterns = [
     path('room', endpoints.create_room),
     path('room/<str:room_code>', endpoints.handle_room),
     path('game/<str:room_code>/play', endpoints.play_card),
+    path('game/<str:room_code>/deck', endpoints.steal_card),
 ]
