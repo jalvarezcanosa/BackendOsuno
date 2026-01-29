@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+
 from osunorest01app import endpoints
 
 urlpatterns = [
@@ -28,4 +29,6 @@ urlpatterns = [
     path('room/<str:room_code>', endpoints.handle_room),
     path('game/<str:room_code>/play', endpoints.play_card),
     path('game/<str:room_code>/deck', endpoints.steal_card),
+    #url para gh7.2
+    path('game/<str:room_code>', endpoints.get_game_state),
 ]
