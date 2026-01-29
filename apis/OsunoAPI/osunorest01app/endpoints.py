@@ -229,3 +229,67 @@ def handle_room(request, room_code):
         return join_room(request, room_code)
     else:
         return JsonResponse({'error': 'Method not supported'}, status=405)
+
+#endpoint asociado a GH_7
+@csrf_exempt
+def get_game_state(request, room_code):
+    #verifica que el metodo sea GET
+    if request.method != 'GET':
+            return JsonResponse({'error': 'HTTP method not supported'}, status=405)
+
+    #valida el token de sesion
+    current_user = __get_request_user(request)
+
+    if current_user is None:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+
+    #busca la partida
+    try:
+        game = Game.objects.get(code=room_code)
+
+    except Game.DoesNotExist:
+        return JsonResponse({'error': 'Game not found'}, status=404)
+
+    #verifica que el usuario pertenece a la partida
+    if game.creator != current_user and game.joined != current_user:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    ##obtiene las cartas de la mano del usuario
+    # .values_list('card_code', flat=True) extrae solo los códigos de las cartas
+    # flat=True convierte [(carta1,), (carta2,)] en [carta1, carta2]
+    user_cards = GameCardInHand.objects.filter(
+        game = game,
+        player = current_user
+    ).values_list('card_code',flat=True)
+
+    #convertir el QuerrySet de Django a una lista en Phyton
+    #ej: ['Red4','Green3']
+    your_hand = list(user_cards)
+
+   ###determinar la carta en la mesa
+    table_card = game.card_in_table if game.card_in_table else "none"
+
+    #determinar si es tu turno
+    is_creator_turn =(current_user == game.creator and game.is_creator_turn)
+
+    is_joined_turn = (current_user == game.joined and not game.is_creator_turn)
+
+    is_your_turn = is_creator_turn or is_joined_turn
+
+    #determinar el estado del juego
+    game_finished = "no"
+
+    if game.state == "creator_won":
+        game_finished = "youWon" if current_user == game.creator else "youLost"
+    elif game.state == "joined_won":
+        game_finished = "youWon" if current_user == game.joined else "youLost"
+    elif game.state == "draw":
+        game_finished = "draw"
+
+    response_data = {
+        "yourHand": your_hand,
+        "tableCard": table_card,
+        "isYourTurn": is_your_turn,
+        "gameFinished": game_finished,
+    }
+    return JsonResponse(response_data, status=200)

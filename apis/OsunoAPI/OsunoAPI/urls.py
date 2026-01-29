@@ -27,4 +27,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('room', endpoints.create_room),
     path('room/<str:room_code>', endpoints.handle_room),
+    #url para gh7.2
+    path('game/<str:room_code>', endpoints.get_game_state),
 ]
