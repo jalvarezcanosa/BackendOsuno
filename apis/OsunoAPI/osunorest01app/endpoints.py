@@ -157,7 +157,7 @@ def join_room(request, room_code):
 
             hand_creator = deck[:7]
             hand_joiner = deck[7:14]
-	    first_card_in_table = deck[14]
+            first_card_in_table = deck[14]
             remaining_deck = deck[15:]
 
             card_in_hand = []
@@ -363,8 +363,8 @@ def steal_card(request, room_code):
     if current_user != player_turn:
         return JsonResponse({'error': 'Not your turn'}, status=403)
 
-    top_value = game.card_in_table[-1]
-    top_color = game.card_in_table[:-1]
+    top_value = game.card_in_table[1:]
+    top_color = game.card_in_table[0]
 
     try:
         with transaction.atomic():
@@ -403,8 +403,8 @@ def steal_card(request, room_code):
 
                     card_to_steal.delete()
 
-                    new_value = new_card_code[-1]
-                    new_color = new_card_code[:-1]
+                    new_value = new_card_code[1:]
+                    new_color = new_card_code[0]
 
                     if new_value == top_value or new_color == top_color:
                         return JsonResponse({'message': 'Playable card stolen'})
