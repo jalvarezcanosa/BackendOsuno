@@ -452,6 +452,8 @@ def get_game_state(request, room_code):
    ###determinar la carta en la mesa
     table_card = game.card_in_table if game.card_in_table else "none"
 
+    deck_cards_count = GameDeckCard.objects.filter(game=game).count()
+
     #determinar si es tu turno
     is_creator_turn =(current_user == game.creator and game.is_creator_turn)
 
@@ -472,7 +474,9 @@ def get_game_state(request, room_code):
     response_data = {
         "yourHand": your_hand,
         "tableCard": table_card,
+        "cardsLeftInDeck": deck_cards_count,
         "isYourTurn": is_your_turn,
         "gameFinished": game_finished,
+
     }
     return JsonResponse(response_data, status=200)
