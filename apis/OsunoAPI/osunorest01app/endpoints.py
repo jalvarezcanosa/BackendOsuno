@@ -454,6 +454,11 @@ def get_game_state(request, room_code):
 
     deck_cards_count = GameDeckCard.objects.filter(game=game).count()
 
+    if current_user == game.creator:
+        rival_cards_count = GameCardInHand.objects.filter(game=game, player=game.joined).count()
+    elif current_user == game.joined:
+        rival_cards_count = GameCardInHand.objects.filter(game=game, player=game.creator).count()
+
     #determinar si es tu turno
     is_creator_turn =(current_user == game.creator and game.is_creator_turn)
 
@@ -473,10 +478,10 @@ def get_game_state(request, room_code):
 
     response_data = {
         "yourHand": your_hand,
+        "rivalHand": rival_cards_count,
         "tableCard": table_card,
         "cardsLeftInDeck": deck_cards_count,
         "isYourTurn": is_your_turn,
         "gameFinished": game_finished,
-
     }
     return JsonResponse(response_data, status=200)
