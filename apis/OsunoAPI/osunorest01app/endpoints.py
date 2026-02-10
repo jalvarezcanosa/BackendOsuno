@@ -153,6 +153,11 @@ def join_room(request, room_code):
                 for num in range(0, 10):
                     card_code = f"{color}{num}"
                     deck.append(card_code)
+
+            #agregando los más dos
+            for i in range(2):
+                card_code = f"´{color}+2"
+                deck.append(card_code)
             random.shuffle(deck)
 
             hand_creator = deck[:7]
@@ -242,6 +247,8 @@ def _parse_card(card_code: str):
     c = card_code[0].lower()
     if c not in ('r', 'g', 'b', 'y'):
         return ('', '')
+    if card_code[1:] == '+2':
+        return (c, '+2')
     num = card_code[1:]
     if not num.isdigit():
         return ('', '')
@@ -311,7 +318,13 @@ def play_card(request, room_code):
     else:
         table_color, table_num = _parse_card(table_card)
         play_color, play_num = _parse_card(card_to_play.lower())
-        valid_play = (play_color != '') and ((play_color == table_color) or (play_num == table_num))
+
+
+
+        if play_num == '+2':
+            valid_play = (play_color == table_color) or (table_num == '+2')
+        else:
+            valid_play = (play_color != '') and ((play_color == table_color) or (play_num == table_num))
 
     if not valid_play:
         return JsonResponse({'error': 'Card does not match color or number'}, status=403)
@@ -321,8 +334,26 @@ def play_card(request, room_code):
             # Quitar carta de mano
             has_card_qs.delete()
 
+            #verificar si es +2
+            _, play_num = _parse_card(card_to_play.lower())
+            is_plus_two = (play_num == '+2')
+
             # Actualizar carta en mesa y turno
             game.card_in_table = card_to_play
+
+            if is_plus_two:
+                rival = game.joined if user == game.creator else game.creator
+
+                ##robar dos cartas
+                for _ in range (2):
+                    deck_card = GameDeckCard().objects.filter(game=game).order_by('initial_position').first()
+                    if deck_card:
+                        GameCardInHand.objects.create(
+                            game=game,
+                            player=rival,
+                            card_code=deck_card.card_code
+                        )
+                        deck_card.delete()
             game.is_creator_turn = not game.is_creator_turn
 
             # Verificar ganador por 0 cartas en mano
